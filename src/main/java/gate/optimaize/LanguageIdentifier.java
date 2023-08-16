@@ -29,11 +29,17 @@ import gate.creole.metadata.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @CreoleResource(name = "Optimaize Language Detection", comment = "Recognizes the document language using Optimaize", icon = "paw-print.png", helpURL = "http://gate.ac.uk/userguide/sec:misc-creole:language-identification")
 public class LanguageIdentifier extends gate.creole.AbstractLanguageAnalyser {
@@ -50,7 +56,7 @@ public class LanguageIdentifier extends gate.creole.AbstractLanguageAnalyser {
 
   private List<String> builtInLanguages;
 
-  private List<ResourceReference> extraProfiles;
+  private ResourceReference extraProfiles;
 
   private String languageFeatureName;
 
@@ -77,10 +83,16 @@ public class LanguageIdentifier extends gate.creole.AbstractLanguageAnalyser {
           }
         }
         if(extraProfiles != null) {
-          LanguageProfileReader reader = new LanguageProfileReader();
-          for(ResourceReference res : extraProfiles) {
-            try(InputStream in = res.openStream()) {
-              languageProfiles.add(reader.read(in));
+          LanguageProfileReader profileReader = new LanguageProfileReader();
+          try(BufferedReader r = new BufferedReader(new InputStreamReader(extraProfiles.openStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while((line = r.readLine()) != null) {
+              line = line.replaceAll("#.*$", "").trim();
+              if(!line.isEmpty()) {
+                try(InputStream in = new ResourceReference(extraProfiles, line).openStream()) {
+                  languageProfiles.add(profileReader.read(in));
+                }
+              }
             }
           }
         }
@@ -88,7 +100,7 @@ public class LanguageIdentifier extends gate.creole.AbstractLanguageAnalyser {
         LOG.info("Creating language detector with {} profiles, optimized for {} text", languageProfiles.size(), textType);
         detector = LanguageDetectorBuilder.create(NgramExtractors.standard())
                 .withProfiles(languageProfiles).build();
-      } catch(IOException e) {
+      } catch(IOException | URISyntaxException e) {
         throw new ResourceInstantiationException("Unable to load language profiles", e);
       }
     }
@@ -173,12 +185,12 @@ public class LanguageIdentifier extends gate.creole.AbstractLanguageAnalyser {
   }
 
   @Optional
-  @CreoleParameter(comment = "Additional language profile files to load, either in addition to (if loadBuiltInProfiles=true) or instead of (if false) the default ones.")
-  public void setExtraProfiles(List<ResourceReference> extraProfiles) {
+  @CreoleParameter(comment = "Additional language profile files to load, either in addition to (if loadBuiltInProfiles=true) or instead of (if false) the default ones.  This parameter should point to a text file that contains one or more lines, each of which is the URL (relative or absolute) to a language profile file.")
+  public void setExtraProfiles(ResourceReference extraProfiles) {
     this.extraProfiles = extraProfiles;
   }
 
-  public List<ResourceReference> getExtraProfiles() {
+  public ResourceReference getExtraProfiles() {
     return extraProfiles;
   }
 
